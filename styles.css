@@ -584,6 +584,11 @@
 
 .sr-today-modal {
   padding: 0.5em;
+  max-width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
 }
 
 .sr-today-header {
@@ -651,17 +656,28 @@
   text-align: left;
   padding: 0.9em 1em;
   min-height: 56px;
+  height: auto;
+  white-space: normal;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .sr-today-btn-title {
   font-weight: 600;
   font-size: 1em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.3;
 }
 
 .sr-today-btn-sub {
   font-size: 0.8em;
   color: rgba(255, 255, 255, 0.7);
   margin-top: 0.2em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .sr-today-continue {
@@ -811,12 +827,44 @@
     min-height: 80px;
   }
 
+  .sr-today-modal {
+    max-height: 100dvh;
+  }
+
   .sr-today-streak-num {
-    font-size: 2.8em;
+    font-size: 2.2em;
+  }
+
+  .sr-today-streak-icon {
+    font-size: 1.5em;
+  }
+
+  .sr-today-header {
+    padding: 0.4em 0 0.6em;
+    margin-bottom: 0.6em;
   }
 
   .sr-today-actions .sr-btn-large {
-    min-height: 64px;
+    min-height: 60px;
+    padding: 0.8em 0.9em;
+  }
+
+  .sr-today-btn-title {
+    font-size: 0.95em;
+  }
+
+  .sr-today-btn-sub {
+    font-size: 0.75em;
+  }
+
+  .sr-today-cue {
+    font-size: 0.85em;
+    padding: 0.5em 0.7em;
+  }
+
+  .sr-today-stats,
+  .sr-today-budget {
+    font-size: 0.8em;
   }
 
   .sr-pre-actions,

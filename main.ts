@@ -2160,14 +2160,18 @@ export default class SpeedReadingPlugin extends Plugin {
   async onload() {
     await this.loadSettings();
 
-    // Get note path from active view (non-deprecated API)
+    // Get note path from active view, with fallback to workspace.getActiveFile()
+    // (handles cases where focus is on sidebar, canvas, or a non-markdown view
+    // while a markdown file is still the "active" file in the workspace)
     const getNotePath = (): string | null => {
       const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      return view?.file?.path ?? null;
+      if (view?.file) return view.file.path;
+      const activeFile = this.app.workspace.getActiveFile();
+      return activeFile?.path ?? null;
     };
 
-    // Get text from editor or active note
-    const getText = (editor?: Editor): string => {
+    // Get text from editor, active markdown view, or active file (async read)
+    const getText = async (editor?: Editor): Promise<string> => {
       if (editor) {
         const sel = editor.getSelection();
         if (sel && sel.trim() !== "") return sel;
@@ -2179,6 +2183,11 @@ export default class SpeedReadingPlugin extends Plugin {
         const sel = ed.getSelection();
         if (sel && sel.trim() !== "") return sel;
         return ed.getValue();
+      }
+      // Fallback: read directly from the active file via vault
+      const activeFile = this.app.workspace.getActiveFile();
+      if (activeFile instanceof TFile) {
+        return await this.app.vault.cachedRead(activeFile);
       }
       return "";
     };
@@ -2193,8 +2202,8 @@ export default class SpeedReadingPlugin extends Plugin {
     this.addCommand({
       id: "speed-read-current-note-or-selection",
       name: "Speed Read Current Note or Selection",
-      callback: () => {
-        const text = getText();
+      callback: async () => {
+        const text = await getText();
         if (!text || text.trim() === "") {
           new Notice("No text found to speed read.");
           return;
@@ -2274,8 +2283,8 @@ export default class SpeedReadingPlugin extends Plugin {
     this.addCommand({
       id: "speed-read-with-overview",
       name: "Speed Read with Overview",
-      callback: () => {
-        const text = getText();
+      callback: async () => {
+        const text = await getText();
         if (!text || text.trim() === "") {
           new Notice("No text found to speed read.");
           return;
@@ -2306,8 +2315,8 @@ export default class SpeedReadingPlugin extends Plugin {
     this.addCommand({
       id: "speed-read-study-cards",
       name: "Generate Study Cards",
-      callback: () => {
-        const text = getText();
+      callback: async () => {
+        const text = await getText();
         if (!text || text.trim() === "") {
           new Notice("No text found.");
           return;
@@ -2322,8 +2331,8 @@ export default class SpeedReadingPlugin extends Plugin {
     this.addCommand({
       id: "speed-read-restart",
       name: "Speed Read from Beginning",
-      callback: () => {
-        const text = getText();
+      callback: async () => {
+        const text = await getText();
         if (!text || text.trim() === "") {
           new Notice("No text found to speed read.");
           return;
