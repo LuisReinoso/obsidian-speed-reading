@@ -337,9 +337,20 @@
     background: rgba(255,255,255,0.02);
     border-radius: 8px;
     touch-action: pan-y;
+    /* Scale up visually without breaking the 20ch layout math.
+       1.8× makes the text nearly double while the pivot stays centered
+       (transform-origin: center). The box occupies its original layout
+       space so surrounding elements don't shift. */
+    transform: scale(1.5);
+    transform-origin: center center;
   }
 
-  .rsvp-progress-container { padding: 0 0.5em; }
+  .rsvp-progress-container {
+    padding: 0 0.5em;
+    max-width: 100%;
+    width: 100%;
+    align-self: stretch;
+  }
 
   .rsvp-progress-slider { height: 10px; border-radius: 5px; }
 
