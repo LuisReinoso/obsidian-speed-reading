@@ -1,5 +1,6 @@
 import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, MarkdownView, TFile, requestUrl } from "obsidian";
 import { computeRsvpLayout, getPivotIndex, DISPLAY_CHARS, PIVOT_POS } from "./rsvp-layout";
+import { companionPath, companionDir } from "./companion-path";
 
 // ===== INTERFACES =====
 
@@ -498,17 +499,7 @@ async function aiRequest(
 }
 
 // ===== COMPANION FILE HELPERS =====
-
-function companionPath(notePath: string, suffix: string): string {
-  const base = notePath.replace(/\.md$/, "");
-  return `${base} - ${suffix}.md`;
-}
-
-function companionDir(notePath: string): string {
-  const parts = notePath.split("/");
-  parts.pop();
-  return parts.join("/");
-}
+// companionPath and companionDir are imported from ./companion-path
 
 /**
  * Render plain text with line breaks into a container without using innerHTML.
