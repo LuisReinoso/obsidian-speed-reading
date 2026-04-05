@@ -34,10 +34,11 @@
  */
 .rsvp-display {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
+  align-self: center;
   font-family: 'Fira Mono', 'Consolas', 'Menlo', 'Monaco', monospace;
   font-size: clamp(2em, 6vw, 2.8em);
   font-weight: 600;
@@ -45,7 +46,7 @@
   color: var(--text-normal, #fff);
   width: 20ch;
   min-width: 20ch;
-  max-width: 100%;
+  max-width: 20ch;
   margin: 0 auto;
   letter-spacing: 0;
   padding: 1em 0;
@@ -61,6 +62,22 @@
   margin: 0;
   text-align: center;
   user-select: none;
+}
+
+/* Shared fixed-width rule for ALL char spans so no glyph can shift the pivot.
+   1ch = the width of "0" in the current monospace font. Forcing every span
+   (visible and padding) to exactly 1ch makes the pivot column stable
+   regardless of font-weight, glyph metrics, or device fallback fonts. */
+.rsvp-pivot-char,
+.rsvp-focus-word,
+.rsvp-invisible-word {
+  display: inline-block;
+  width: 1ch;
+  min-width: 1ch;
+  max-width: 1ch;
+  text-align: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 /* Pivot character */
