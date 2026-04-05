@@ -365,6 +365,7 @@ class PreReadingModal extends Modal {
         }
       }
     } catch (err: any) {
+      await debugLog(this.app, "fetchAISummary.fail", { serverUrl: this.serverUrl, error: err });
       summaryContent.setText(`Could not load AI summary: ${err.message}`);
       // Show heuristic content as fallback
       this.renderHeuristicContent(scrollArea);
@@ -402,29 +403,97 @@ function tryExecuteCommand(app: App, commandId: string): boolean {
 
 // ===== AI REQUEST HELPER =====
 
+// ===== DEBUG LOGGING =====
+//
+// Persistent client-side log so diagnostics don't rely on the user copy-pasting
+// Notices. Writes to `.obsidian/plugins/speed-reading/debug.log` via the vault
+// adapter (works on mobile and desktop, survives reloads). Kept small via a
+// soft size cap on append.
+
+const DEBUG_LOG_PATH = ".obsidian/plugins/speed-reading/debug.log";
+const DEBUG_LOG_MAX_BYTES = 200_000; // ~200KB rolling cap
+
+async function debugLog(app: App, tag: string, payload: Record<string, any>): Promise<void> {
+  try {
+    const line =
+      `[${new Date().toISOString()}] ${tag} ` +
+      JSON.stringify(payload, (_k, v) => (v instanceof Error ? { name: v.name, message: v.message, stack: v.stack } : v)) +
+      "\n";
+
+    const adapter = app.vault.adapter;
+    let existing = "";
+    try {
+      if (await adapter.exists(DEBUG_LOG_PATH)) {
+        existing = await adapter.read(DEBUG_LOG_PATH);
+      }
+    } catch {}
+
+    // Rolling truncation: drop the oldest half when we exceed the cap
+    if (existing.length + line.length > DEBUG_LOG_MAX_BYTES) {
+      const cut = existing.indexOf("\n", Math.floor(existing.length / 2));
+      existing = cut >= 0 ? existing.slice(cut + 1) : "";
+    }
+
+    await adapter.write(DEBUG_LOG_PATH, existing + line);
+  } catch {
+    // Logging must never throw — swallow so it can't break the caller's error path
+  }
+}
+
 async function aiRequest(
   serverUrl: string,
   endpoint: string,
-  body: any
+  body: any,
+  app?: App,
 ): Promise<any> {
   if (!serverUrl) {
     throw new Error("No Study Server URL configured. Set it in plugin settings.");
   }
 
-  const resp = await requestUrl({
-    url: `${serverUrl}${endpoint}`,
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    throw: false,
-  });
+  const url = `${serverUrl}${endpoint}`;
+  const started = Date.now();
+  const bodySize = JSON.stringify(body).length;
 
-  if (resp.status < 200 || resp.status >= 400) {
-    const errMsg = resp.json?.error || resp.text?.substring(0, 200) || `HTTP ${resp.status}`;
-    throw new Error(errMsg);
+  try {
+    const resp = await requestUrl({
+      url,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      throw: false,
+    });
+
+    const elapsedMs = Date.now() - started;
+
+    if (resp.status < 200 || resp.status >= 400) {
+      const errMsg = resp.json?.error || resp.text?.substring(0, 200) || `HTTP ${resp.status}`;
+      if (app) {
+        await debugLog(app, "aiRequest.httpError", {
+          url, endpoint, status: resp.status, elapsedMs, bodySize,
+          responseText: (resp.text || "").substring(0, 500),
+          errMsg,
+        });
+      }
+      throw new Error(errMsg);
+    }
+
+    if (app) {
+      await debugLog(app, "aiRequest.ok", {
+        endpoint, status: resp.status, elapsedMs, bodySize,
+        responseKeys: resp.json ? Object.keys(resp.json) : [],
+      });
+    }
+
+    return resp.json;
+  } catch (err: any) {
+    if (app) {
+      await debugLog(app, "aiRequest.exception", {
+        url, endpoint, elapsedMs: Date.now() - started, bodySize,
+        error: err,
+      });
+    }
+    throw err;
   }
-
-  return resp.json;
 }
 
 // ===== COMPANION FILE HELPERS =====
@@ -548,14 +617,38 @@ class StudyModal extends Modal {
       reviewSection.createEl("h3", { text: "Review", cls: "sr-section-title" });
       const reviewBtns = reviewSection.createDiv({ cls: "sr-ai-buttons" });
 
+      // Helper: open a companion file by path. Uses getLeaf().openFile() which
+      // takes a TFile directly, bypassing openLinkText's wikilink resolution
+      // (which fails silently on paths containing commas, accents, or deep
+      // nesting — e.g. "Books/Pensar más, pensar mejor/..."). Logs to debug.log
+      // on any failure so future breakage is diagnosable.
+      const openCompanion = async (path: string, label: string): Promise<boolean> => {
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (!(file instanceof TFile)) {
+          await debugLog(this.app, "openCompanion.notFound", { label, path });
+          new Notice(`${label}: file not found at ${path}`);
+          return false;
+        }
+        try {
+          await this.app.workspace.getLeaf(true).openFile(file);
+          return true;
+        } catch (err: any) {
+          await debugLog(this.app, "openCompanion.openFail", { label, path, error: err });
+          new Notice(`${label}: could not open — ${err.message}`);
+          return false;
+        }
+      };
+
       if (hasFlash) {
         const btn = reviewBtns.createEl("button", { text: "Review Flashcards", cls: "sr-btn sr-btn-primary sr-btn-large" });
         btn.onclick = async () => {
           this.close();
-          await this.app.workspace.openLinkText(flashPath, "", true);
-          setTimeout(() => {
-            tryExecuteCommand(this.app, "obsidian-study-spaced-repetition:srs-review-flashcards-in-note");
-          }, 800);
+          const ok = await openCompanion(flashPath, "Flashcards");
+          if (ok) {
+            setTimeout(() => {
+              tryExecuteCommand(this.app, "obsidian-study-spaced-repetition:srs-review-flashcards-in-note");
+            }, 800);
+          }
         };
       }
 
@@ -563,18 +656,20 @@ class StudyModal extends Modal {
         const btn = reviewBtns.createEl("button", { text: "Review Quiz", cls: "sr-btn sr-btn-primary sr-btn-large" });
         btn.onclick = async () => {
           this.close();
-          await this.app.workspace.openLinkText(quizPath, "", true);
-          setTimeout(() => {
-            tryExecuteCommand(this.app, "obsidian-study-quiz:open-quiz-from-active-note");
-          }, 800);
+          const ok = await openCompanion(quizPath, "Quiz");
+          if (ok) {
+            setTimeout(() => {
+              tryExecuteCommand(this.app, "obsidian-study-quiz:open-quiz-from-active-note");
+            }, 800);
+          }
         };
       }
 
       if (hasSummary) {
         const btn = reviewBtns.createEl("button", { text: "Read Summary", cls: "sr-btn sr-btn-large" });
         btn.onclick = async () => {
-          await this.app.workspace.openLinkText(summaryPath, "", true);
           this.close();
+          await openCompanion(summaryPath, "Summary");
         };
       }
     }
@@ -638,7 +733,7 @@ class StudyModal extends Modal {
       const requestCount = Math.min(this.maxCards, dailyLeft);
       const data = await aiRequest(this.serverUrl, "/api/flashcards", {
         text: studyText, language: this.language, count: requestCount,
-      });
+      }, this.app);
       const cards: Flashcard[] = (data.cards || []).map((c: any) => ({ front: c.front, back: c.back }));
       if (cards.length === 0) { new Notice("No flashcards generated."); btn.textContent = "Generate Flashcards"; btn.disabled = false; return; }
 
@@ -708,6 +803,7 @@ class StudyModal extends Modal {
       this.render();
     } catch (err: any) {
       const msg = err.message || "Unknown error";
+      await debugLog(this.app, "generateFlashcards.fail", { notePath: this.notePath, serverUrl: this.serverUrl, error: err });
       if (msg.includes("net::") || msg.includes("Failed to fetch") || msg.includes("ECONNREFUSED")) {
         new Notice(`Flashcards: Server not reachable at ${this.serverUrl}. Is it running?`);
       } else if (msg.includes("400")) {
@@ -741,7 +837,7 @@ class StudyModal extends Modal {
         language: this.language,
         types: ["true-false", "multiple-choice", "short-answer"],
         count: requestCount,
-      });
+      }, this.app);
       const questions = data.questions || [];
       if (questions.length === 0) { new Notice("No questions generated."); btn.textContent = "Generate Quiz"; btn.disabled = false; return; }
 
@@ -815,6 +911,7 @@ class StudyModal extends Modal {
       this.render();
     } catch (err: any) {
       const msg = err.message || "Unknown error";
+      await debugLog(this.app, "generateQuiz.fail", { notePath: this.notePath, serverUrl: this.serverUrl, error: err });
       if (msg.includes("net::") || msg.includes("Failed to fetch") || msg.includes("ECONNREFUSED")) {
         new Notice(`Quiz: Server not reachable at ${this.serverUrl}. Is it running?`);
       } else if (msg.includes("400")) {
@@ -837,7 +934,7 @@ class StudyModal extends Modal {
       const studyText = await this.getStudyText();
       const data = await aiRequest(this.serverUrl, "/api/summary", {
         text: studyText, language: this.language,
-      });
+      }, this.app);
 
       let content = `---\nsource: "[[${this.notePath}]]"\n---\n\n# Summary\n\n`;
       if (data.summary) content += data.summary + "\n\n";
@@ -872,6 +969,7 @@ class StudyModal extends Modal {
       this.render();
     } catch (err: any) {
       const msg = err.message || "Unknown error";
+      await debugLog(this.app, "generateSummary.fail", { notePath: this.notePath, serverUrl: this.serverUrl, error: err });
       if (msg.includes("net::") || msg.includes("Failed to fetch") || msg.includes("ECONNREFUSED")) {
         new Notice(`Summary: Server not reachable at ${this.serverUrl}. Is it running?`);
       } else if (msg.includes("400")) {
