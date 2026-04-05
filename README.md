@@ -1,5 +1,14 @@
 # Obsidian Speed Reading Plugin
 
+> **Part of the Study Framework** — a small ecosystem of tools for evidence-based learning in Obsidian. Each piece is independent and usable on its own.
+>
+> | Component | Role |
+> |---|---|
+> | **obsidian-speed-reading** *(this repo)* | RSVP reader with retrieval practice, streaks, and session tracking |
+> | [**obsidian-study-spaced-repetition**](https://github.com/LuisReinoso/obsidian-study-spaced-repetition) | Spaced repetition flashcard review using `question::answer` notes (fork of `st3v3nmw/obsidian-spaced-repetition`) |
+> | [**obsidian-study-quiz**](https://github.com/LuisReinoso/obsidian-study-quiz) | In-note quiz UI powered by a self-hosted Claude backend (fork of `ECuiDev/obsidian-quiz-generator`) |
+> | [**claude-study-server**](https://github.com/LuisReinoso/claude-study-server) | Backend that generates the summaries, flashcards, and quiz questions consumed by the three plugins |
+
 A plugin to enable speed reading using the RSVP (Rapid Serial Visual Presentation) technique. Select text in your note and trigger a modal to display words at a user-controlled pace.
 
 <p align="center">
