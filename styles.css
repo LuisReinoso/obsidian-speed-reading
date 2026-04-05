@@ -37,12 +37,12 @@
   flex: 0 0 auto;
   flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   align-self: center;
   font-family: 'Fira Mono', 'Consolas', 'Menlo', 'Monaco', monospace;
   font-size: clamp(2em, 6vw, 2.8em);
   font-weight: 600;
-  text-align: left;
+  text-align: center;
   color: var(--text-normal, #fff);
   width: 20ch;
   min-width: 20ch;
@@ -324,9 +324,15 @@
   .rsvp-touch-hint { display: block; }
 
   .rsvp-display {
-    font-size: clamp(1.8em, 10vw, 2.5em);
-    min-width: 0;
-    width: 100%;
+    /* Mobile font must be small enough that 20ch fits within the viewport.
+       At 375px screen – ~30px padding = ~345px available.
+       1ch ≈ 0.6 × font-size → font-size ≤ 345 / (20 × 0.6) ≈ 28px ≈ 1.75em.
+       clamp(1.4em, 4.5vw, 1.75em) gives:
+         375px → 4.5vw = 16.9px, clamped to 1.4em ≈ 22px → 20ch ≈ 267px ✓
+         414px → 4.5vw = 18.6px → 20ch ≈ 223px ✓
+       Do NOT override width/min-width — the base 20ch rule must hold so the
+       padding math centers the pivot. */
+    font-size: clamp(1.4em, 4.5vw, 1.75em);
     padding: 1.2em 0;
     background: rgba(255,255,255,0.02);
     border-radius: 8px;
