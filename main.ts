@@ -622,7 +622,13 @@ class StudyModal extends Modal {
           return false;
         }
         try {
-          await this.app.workspace.getLeaf(true).openFile(file);
+          // Use getMostRecentLeaf() instead of getLeaf(true). On mobile,
+          // getLeaf(true) creates a new tab/split that may not become visible.
+          // getMostRecentLeaf() reuses the existing leaf so the file appears
+          // in the current view. Falls back to getLeaf(false) if no leaf exists.
+          const leaf = this.app.workspace.getMostRecentLeaf() ?? this.app.workspace.getLeaf(false);
+          await leaf.openFile(file);
+          await debugLog(this.app, "openCompanion.ok", { label, path });
           return true;
         } catch (err: any) {
           await debugLog(this.app, "openCompanion.openFail", { label, path, error: err });
