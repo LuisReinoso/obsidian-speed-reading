@@ -1,4 +1,5 @@
 import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, MarkdownView, TFile, requestUrl } from "obsidian";
+import { computeRsvpLayout, getPivotIndex, DISPLAY_CHARS, PIVOT_POS } from "./rsvp-layout";
 
 // ===== INTERFACES =====
 
@@ -1214,9 +1215,8 @@ class SpeedReadModal extends Modal {
   private onStudyRequest?: (readPortionText: string) => void;
   private onSessionComplete?: (wordsRead: number, minutes: number) => void;
 
-  // Pivot constants
-  private static readonly DISPLAY_CHARS = 20;
-  private static readonly PIVOT_POS = 10;
+  // Pivot constants are defined in rsvp-layout.ts — kept there so the layout
+  // math is testable in isolation (see rsvp-layout.test.ts).
 
   constructor(
     app: App,
@@ -1674,26 +1674,29 @@ class SpeedReadModal extends Modal {
   }
 
   private renderCurrentWord() {
+    // Build the DOM directly (not innerHTML) so the rendering matches the
+    // tested layout exactly and avoids any HTML-escaping surprises with
+    // unicode characters. Every char span — visible AND padding — is sized
+    // to exactly 1ch by CSS, so the pivot column is mathematically guaranteed
+    // to land on PIVOT_POS regardless of word length, font weight, or glyph
+    // metrics. See rsvp-layout.test.ts for the invariant under test.
     const word = this.words[this.currentIndex] || "";
-    const pivotIdx = SpeedReadModal.getPivotIndex(word);
-    const leftPad = SpeedReadModal.PIVOT_POS - pivotIdx;
-    const rightPad = Math.max(0, SpeedReadModal.DISPLAY_CHARS - (leftPad + word.length));
+    const layout = computeRsvpLayout(word);
 
-    let html = "";
-    for (let i = 0; i < leftPad; i++) {
-      html += `<span class="rsvp-invisible-word">m</span>`;
+    this.displayEl.empty();
+
+    for (let i = 0; i < layout.leftPad; i++) {
+      this.displayEl.createSpan({ cls: "rsvp-invisible-word", text: "m" });
     }
-    for (let i = 0; i < word.length; i++) {
-      if (i === pivotIdx) {
-        html += `<span class="rsvp-pivot-char">${word[i]}</span>`;
-      } else {
-        html += `<span class="rsvp-focus-word">${word[i]}</span>`;
-      }
+    for (const ch of layout.chars) {
+      this.displayEl.createSpan({
+        cls: ch.isPivot ? "rsvp-pivot-char" : "rsvp-focus-word",
+        text: ch.char,
+      });
     }
-    for (let i = 0; i < rightPad; i++) {
-      html += `<span class="rsvp-invisible-word">m</span>`;
+    for (let i = 0; i < layout.rightPad; i++) {
+      this.displayEl.createSpan({ cls: "rsvp-invisible-word", text: "m" });
     }
-    this.displayEl.innerHTML = html;
   }
 
   private showNextWord() {
@@ -1730,14 +1733,6 @@ class SpeedReadModal extends Modal {
     const minutesLeft = Math.ceil(remaining / this.wpm);
     const pct = Math.round(((this.currentIndex + 1) / this.words.length) * 100);
     this.statsEl.textContent = `${this.currentIndex + 1}/${this.words.length} — ${pct}% — ${minutesLeft}m left`;
-  }
-
-  // Spritz-like pivot index
-  static getPivotIndex(word: string): number {
-    if (word.length <= 1) return 0;
-    if (word.length <= 5) return 1;
-    if (word.length <= 9) return 2;
-    return 3;
   }
 
   // Strip Markdown for RSVP

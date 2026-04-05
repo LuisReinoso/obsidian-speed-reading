@@ -8,7 +8,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["obsidian"]
+    "types": ["obsidian", "jest", "node"]
   },
-  "include": ["*.ts"]
+  "include": ["*.ts"],
+  "exclude": ["dist", "node_modules", "*.test.ts"]
 }

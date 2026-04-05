@@ -19,17 +19,29 @@
   box-sizing: border-box;
 }
 
-/* RSVP word display */
+/* RSVP word display
+ *
+ * Pivot-alignment contract (see rsvp-layout.ts + rsvp-layout.test.ts):
+ * every char span — visible and invisible padding alike — is exactly 1ch
+ * wide. The row is left-aligned inside a 20ch box that is itself centered
+ * in the viewport via `margin: 0 auto`. With PIVOT_POS = 10, the pivot
+ * char therefore always lands at exactly 10ch from the left edge of the
+ * box, which equals the horizontal center of the viewport.
+ *
+ * Words longer than the row overflow to the RIGHT only (never left), so
+ * the pivot column never shifts. `overflow: visible` lets the tail of
+ * long words extend past the 20ch box into the surrounding modal area.
+ */
 .rsvp-display {
   display: flex;
   flex: 1 1 auto;
   flex-direction: row;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   font-family: 'Fira Mono', 'Consolas', 'Menlo', 'Monaco', monospace;
   font-size: clamp(2em, 6vw, 2.8em);
   font-weight: 600;
-  text-align: center;
+  text-align: left;
   color: var(--text-normal, #fff);
   width: 20ch;
   min-width: 20ch;
@@ -38,6 +50,7 @@
   letter-spacing: 0;
   padding: 1em 0;
   user-select: none;
+  overflow: visible;
 }
 
 /* Touch hint */

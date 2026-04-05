@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "tsc --watch",
     "build": "tsc",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "test": "jest"
   },
   "keywords": [
     "speed-reading",
@@ -19,10 +20,14 @@
   "author": "Luis Reinoso",
   "license": "MIT",
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.5.2",
     "@typescript-eslint/eslint-plugin": "^8.29.1",
     "@typescript-eslint/parser": "^8.29.1",
     "eslint": "^9.24.0",
+    "jest": "^30.3.0",
     "obsidian": "latest",
+    "ts-jest": "^29.4.9",
     "typescript": "^5.0.0"
   },
   "dependencies": {
