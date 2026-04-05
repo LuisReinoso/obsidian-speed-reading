@@ -8,8 +8,8 @@
   },
   "main": "dist/main.js",
   "scripts": {
-    "dev": "tsc --watch",
-    "build": "tsc",
+    "dev": "esbuild main.ts --bundle --outfile=dist/main.js --format=cjs --platform=node --external:obsidian --external:@codemirror/state --external:@codemirror/view --sourcemap --watch",
+    "build": "esbuild main.ts --bundle --outfile=dist/main.js --format=cjs --platform=node --external:obsidian --external:@codemirror/state --external:@codemirror/view",
     "lint": "eslint . --ext .ts",
     "test": "jest"
   },
@@ -24,6 +24,7 @@
     "@types/node": "^25.5.2",
     "@typescript-eslint/eslint-plugin": "^8.29.1",
     "@typescript-eslint/parser": "^8.29.1",
+    "esbuild": "^0.28.0",
     "eslint": "^9.24.0",
     "jest": "^30.3.0",
     "obsidian": "latest",
