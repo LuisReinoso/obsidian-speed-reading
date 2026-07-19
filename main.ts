@@ -25,6 +25,7 @@ interface SpeedReadingSettings {
   autoStart: boolean;
   readingPositions: Record<string, ReadingPosition>;
   studyServerUrl: string;
+  studyServerToken: string;
   studyLanguage: string;
   // Learning-science additions
   studyCue: string;                  // Implementation intention (Adriaanse 2010 — MCII)
@@ -43,6 +44,8 @@ interface SpeedReadingSettings {
   dailyNewQuestionsBudget: number;
   // Per-day generation tracking: { "2026-04-05": { cards: 8, questions: 3 } }
   dailyGenCounts: Record<string, { cards: number; questions: number }>;
+  // Diagnostics
+  debugLogging: boolean;             // If true, debugLog() writes to debug.log in the plugin folder
 }
 
 const DEFAULT_SETTINGS: SpeedReadingSettings = {
@@ -51,6 +54,7 @@ const DEFAULT_SETTINGS: SpeedReadingSettings = {
   autoStart: false,
   readingPositions: {},
   studyServerUrl: "",
+  studyServerToken: "",
   studyLanguage: "es",
   studyCue: "",
   recallPauseWords: 0,
@@ -65,6 +69,7 @@ const DEFAULT_SETTINGS: SpeedReadingSettings = {
   dailyNewCardsBudget: 20,      // Anki's proven default
   dailyNewQuestionsBudget: 10,
   dailyGenCounts: {},
+  debugLogging: false,
 };
 
 const MAX_DAILY_GEN_HISTORY = 30; // keep last 30 days only
@@ -322,7 +327,7 @@ class PreReadingModal extends Modal {
       const resp = await requestUrl({
         url: `${this.serverUrl}/api/summary`,
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...studyServerAuthHeaders() },
         body: JSON.stringify({ text: this.rawText, language: this.language }),
       });
       const data = resp.json;
@@ -405,17 +410,31 @@ function tryExecuteCommand(app: App, commandId: string): boolean {
 
 // ===== AI REQUEST HELPER =====
 
+// Module-level mirrors of settings needed by module-level functions (debugLog,
+// aiRequest) that don't have direct access to `plugin.settings`. Kept in sync
+// with the real settings on plugin load and on every save — see
+// SpeedReadingPlugin.loadSettings() / saveSettings().
+let debugLoggingEnabled = false;
+let studyServerTokenValue = "";
+
+/** Auth header for requests to the study server, or {} when no token is set. */
+function studyServerAuthHeaders(): Record<string, string> {
+  return studyServerTokenValue ? { Authorization: `Bearer ${studyServerTokenValue}` } : {};
+}
+
 // ===== DEBUG LOGGING =====
 //
 // Persistent client-side log so diagnostics don't rely on the user copy-pasting
 // Notices. Writes to `.obsidian/plugins/speed-reading/debug.log` via the vault
 // adapter (works on mobile and desktop, survives reloads). Kept small via a
-// soft size cap on append.
+// soft size cap on append. Gated behind the "Debug logging" setting (default
+// off) since the vault may be cloud-synced and every write causes sync churn.
 
 const DEBUG_LOG_PATH = ".obsidian/plugins/speed-reading/debug.log";
 const DEBUG_LOG_MAX_BYTES = 200_000; // ~200KB rolling cap
 
 async function debugLog(app: App, tag: string, payload: Record<string, any>): Promise<void> {
+  if (!debugLoggingEnabled) return;
   try {
     const line =
       `[${new Date().toISOString()}] ${tag} ` +
@@ -460,7 +479,7 @@ async function aiRequest(
     const resp = await requestUrl({
       url,
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...studyServerAuthHeaders() },
       body: JSON.stringify(body),
       throw: false,
     });
@@ -603,6 +622,14 @@ class StudyModal extends Modal {
     const hasQuiz = !!this.app.vault.getAbstractFileByPath(quizPath);
     const hasSummary = !!this.app.vault.getAbstractFileByPath(summaryPath);
 
+    // Trace: log every render so we can see the modal state on the user's device
+    debugLog(this.app, "StudyModal.render", {
+      notePath: this.notePath,
+      flashPath, quizPath, summaryPath,
+      hasFlash, hasQuiz, hasSummary,
+      serverUrl: this.serverUrl,
+    });
+
     // === REVIEW section (if existing files) ===
     if (hasFlash || hasQuiz || hasSummary) {
       const reviewSection = contentEl.createDiv({ cls: "sr-study-section" });
@@ -640,6 +667,7 @@ class StudyModal extends Modal {
       if (hasFlash) {
         const btn = reviewBtns.createEl("button", { text: "Review Flashcards", cls: "sr-btn sr-btn-primary sr-btn-large" });
         btn.onclick = async () => {
+          await debugLog(this.app, "btn.ReviewFlashcards.clicked", { flashPath });
           this.close();
           const ok = await openCompanion(flashPath, "Flashcards");
           if (ok) {
@@ -653,6 +681,7 @@ class StudyModal extends Modal {
       if (hasQuiz) {
         const btn = reviewBtns.createEl("button", { text: "Review Quiz", cls: "sr-btn sr-btn-primary sr-btn-large" });
         btn.onclick = async () => {
+          await debugLog(this.app, "btn.ReviewQuiz.clicked", { quizPath });
           this.close();
           const ok = await openCompanion(quizPath, "Quiz");
           if (ok) {
@@ -666,6 +695,7 @@ class StudyModal extends Modal {
       if (hasSummary) {
         const btn = reviewBtns.createEl("button", { text: "Read Summary", cls: "sr-btn sr-btn-large" });
         btn.onclick = async () => {
+          await debugLog(this.app, "btn.ReadSummary.clicked", { summaryPath });
           this.close();
           await openCompanion(summaryPath, "Summary");
         };
@@ -962,6 +992,7 @@ class StudyModal extends Modal {
         await this.app.vault.create(filePath, content);
       }
 
+      await debugLog(this.app, "generateSummary.ok", { notePath: this.notePath, filePath, contentLength: content.length });
       new Notice("Summary saved!");
       // Re-render modal to show Review buttons
       this.render();
@@ -1967,13 +1998,26 @@ class SpeedReadingSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Study Server URL")
-      .setDesc("URL of the Claude Study Server for AI-powered study features. Leave empty to use only heuristic generation. Example: http://100.x.x.x:3457")
+      .setDesc("URL of the Study Server for AI-powered study features. Leave empty to use only heuristic generation. Example: http://100.x.x.x:3457")
       .addText((text) =>
         text
           .setPlaceholder("http://localhost:3457")
           .setValue(this.plugin.settings.studyServerUrl)
           .onChange(async (value) => {
             this.plugin.settings.studyServerUrl = value.replace(/\/+$/, "");
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Study Server Token")
+      .setDesc("Optional auth token for the Study Server. When set, sent as \"Authorization: Bearer <token>\" on every request. Leave empty if your server doesn't require auth.")
+      .addText((text) =>
+        text
+          .setPlaceholder("")
+          .setValue(this.plugin.settings.studyServerToken)
+          .onChange(async (value) => {
+            this.plugin.settings.studyServerToken = value.trim();
             await this.plugin.saveSettings();
           })
       );
@@ -2026,6 +2070,18 @@ class SpeedReadingSettingTab extends PluginSettingTab {
           this.plugin.updateStatusBar();
           new Notice("Streak and session log reset.");
           this.display();
+        })
+      );
+
+    containerEl.createEl("h2", { text: "Diagnostics" });
+
+    new Setting(containerEl)
+      .setName("Debug logging")
+      .setDesc("Writes debug.log inside the plugin folder (.obsidian/plugins/speed-reading/debug.log). Useful for troubleshooting, but causes extra disk writes on every render/click — leave off unless diagnosing an issue, especially on synced vaults.")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.debugLogging).onChange(async (value) => {
+          this.plugin.settings.debugLogging = value;
+          await this.plugin.saveSettings();
         })
       );
   }
@@ -2564,10 +2620,14 @@ export default class SpeedReadingPlugin extends Plugin {
     if (!this.settings.readingPositions) {
       this.settings.readingPositions = {};
     }
+    debugLoggingEnabled = this.settings.debugLogging;
+    studyServerTokenValue = this.settings.studyServerToken;
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
+    debugLoggingEnabled = this.settings.debugLogging;
+    studyServerTokenValue = this.settings.studyServerToken;
   }
 
   onunload() {
